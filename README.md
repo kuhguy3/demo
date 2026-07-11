@@ -4,6 +4,10 @@ A personal Python playground for authorized security testing, CTF practice,
 and recon experiments. **Only point these tools at systems you own or have
 explicit permission to test.**
 
+A PowerShell port of this same toolkit (recon, web-app testing,
+engagement scope/audit/findings, pipelines, interactive drill-down)
+lives in [`powershell/`](powershell/README.md).
+
 ## Setup
 
 ```bash
