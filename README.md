@@ -43,6 +43,52 @@ playground crawl https://example.com --max-pages 25
 playground map https://example.com
 ```
 
+Every command accepts `--json` (machine-readable output for scripting)
+and `--no-interactive` (skip the drill-down menu below).
+
+## Pipelines
+
+Prebuilt chains that run several tools in sequence:
+
+```bash
+playground recon example.com      # subdomains -> scan -> fingerprint/map any web ports found
+playground webrecon https://example.com  # fingerprint -> map -> crawl -> fuzz
+```
+
+## Interactive drill-down
+
+When run in a real terminal (not `--json`/`--no-interactive`), `scan`,
+`discover`, `subdomains`, `fuzz`, and `crawl` drop into a menu after
+printing results, letting you act on a specific finding — e.g. scan a
+discovered subdomain, or fingerprint/map/fuzz a host with an open web
+port — without re-typing the command.
+
+## Engagements: scope, audit log, findings, reports
+
+Every command run is recorded into an **engagement workspace**
+(default: `./.playground/`, override with `--engagement DIR`):
+
+- `scope.yaml` — authorized targets (see below)
+- `audit.log` — a timestamped, append-only record of every command run
+- `findings.json` — structured results from every run
+- `report.md` — a human-readable Markdown summary, regenerated on each run
+
+### Scope enforcement
+
+By default (no `scope.yaml`) tools run against any target, same as
+before. Once a scope is initialized, it's enforced fail-closed — only
+authorized targets can be scanned:
+
+```bash
+playground scope init --engagement ./engagements/acme
+playground scope add example.com --engagement ./engagements/acme
+playground scope add 10.0.0.0/24 --engagement ./engagements/acme
+playground scope list --engagement ./engagements/acme
+
+playground scan 10.0.0.5 --engagement ./engagements/acme   # allowed
+playground scan evil.com --engagement ./engagements/acme   # refused, exit code 1
+```
+
 ## Tests
 
 ```bash
