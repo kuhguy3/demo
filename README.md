@@ -14,11 +14,18 @@ pip install -e ".[dev]"
 
 ## Tools
 
+Recon-phase methodology loosely follows *The Hacker Playbook 3* (network
+enumeration) and *The Web Application Hacker's Handbook, 2nd ed.*
+(mapping the application, identifying entry points).
+
 - **Network recon** (`playground.recon`)
   - `port_scanner` — threaded TCP connect scan, banner grabbing opt-in
   - `host_discovery` — ICMP ping sweep over a CIDR range
+  - `subdomains` — DNS-based subdomain enumeration
 - **Web app testing** (`playground.webtest`)
   - `inspector` — status/headers/cookies/redirect-chain inspection
+  - `fingerprint` — passive tech fingerprinting + missing security-header report
+  - `entry_points` — form/input discovery and hidden content via robots.txt/sitemap.xml
   - `fuzzer` — wordlist-based path fuzzing
   - `crawler` — minimal same-domain link crawler
 
@@ -32,9 +39,12 @@ function args) if you need something faster.
 ```bash
 playground scan 127.0.0.1 --ports 22,80,443 --banners
 playground discover 192.168.1.0/24
+playground subdomains example.com
 playground headers https://example.com
+playground fingerprint https://example.com
 playground fuzz https://example.com --wordlist words.txt
 playground crawl https://example.com --max-pages 25
+playground map https://example.com
 ```
 
 ## Tests
