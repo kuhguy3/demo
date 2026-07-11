@@ -7,6 +7,7 @@ hammering the target; tune `delay` and `max_workers` deliberately.
 
 from __future__ import annotations
 
+import random
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -43,16 +44,20 @@ def fuzz(
     base_url: str,
     wordlist: list[str] | None = None,
     timeout: float = 5.0,
-    max_workers: int = 5,
-    delay: float = 0.1,
+    max_workers: int = 3,
+    delay: float = 0.3,
 ) -> list[FuzzResult]:
-    """Request `base_url` + each word in `wordlist` and report status/length."""
+    """Request `base_url` + each word in `wordlist` and report status/length.
+
+    `max_workers` and `delay` control how bursty the fuzzing is; defaults
+    favor a quieter footprint over speed.
+    """
     base_url = base_url.rstrip("/")
     words = wordlist or DEFAULT_WORDLIST
 
     def probe(word: str) -> FuzzResult:
         url = f"{base_url}/{word}"
-        time.sleep(delay)
+        time.sleep(delay + random.uniform(0, delay))
         try:
             resp = requests.get(url, timeout=timeout, allow_redirects=False)
             return FuzzResult(path=word, url=url, status_code=resp.status_code, length=len(resp.content))

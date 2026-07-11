@@ -5,7 +5,9 @@ For use only against hosts you own or are explicitly authorized to test.
 
 from __future__ import annotations
 
+import random
 import socket
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
@@ -19,17 +21,20 @@ class PortResult:
     banner: str | None = None
 
 
-def _probe_port(host: str, port: int, timeout: float) -> PortResult:
+def _probe_port(host: str, port: int, timeout: float, delay: float, grab_banner: bool) -> PortResult:
+    if delay:
+        time.sleep(delay + random.uniform(0, delay))
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock:
             banner = None
-            try:
-                sock.settimeout(timeout)
-                data = sock.recv(128)
-                if data:
-                    banner = data.decode(errors="replace").strip()
-            except (socket.timeout, OSError):
-                pass
+            if grab_banner:
+                try:
+                    sock.settimeout(timeout)
+                    data = sock.recv(128)
+                    if data:
+                        banner = data.decode(errors="replace").strip()
+                except (socket.timeout, OSError):
+                    pass
             return PortResult(port=port, open=True, banner=banner)
     except (socket.timeout, ConnectionRefusedError, OSError):
         return PortResult(port=port, open=False)
@@ -39,16 +44,24 @@ def scan(
     host: str,
     ports: list[int] | None = None,
     timeout: float = 0.5,
-    max_workers: int = 50,
+    max_workers: int = 10,
+    delay: float = 0.0,
+    grab_banners: bool = False,
 ) -> list[PortResult]:
     """Scan `host` on `ports` (default: COMMON_PORTS) using TCP connect scanning.
 
-    Returns results for every port, open and closed, in ascending port order.
+    `max_workers` and `delay` control how much simultaneous/rapid-fire
+    traffic the scan generates; defaults favor a quieter footprint over
+    speed. Banner grabbing is opt-in via `grab_banners` since it involves an
+    extra read per open port. Returns results for every port, open and
+    closed, in ascending port order.
     """
     ports = ports or COMMON_PORTS
     results: list[PortResult] = []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
-        futures = {pool.submit(_probe_port, host, port, timeout): port for port in ports}
+        futures = {
+            pool.submit(_probe_port, host, port, timeout, delay, grab_banners): port for port in ports
+        }
         for future in as_completed(futures):
             results.append(future.result())
     return sorted(results, key=lambda r: r.port)
