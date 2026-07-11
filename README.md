@@ -1,4 +1,4 @@
-# demo — security playground
+# security playground
 
 A personal Python playground for authorized security testing, CTF practice,
 and recon experiments. **Only point these tools at systems you own or have
@@ -13,10 +13,6 @@ pip install -e ".[dev]"
 ```
 
 ## Tools
-
-Recon-phase methodology loosely follows *The Hacker Playbook 3* (network
-enumeration) and *The Web Application Hacker's Handbook, 2nd ed.*
-(mapping the application, identifying entry points).
 
 - **Network recon** (`playground.recon`)
   - `port_scanner` — threaded TCP connect scan, banner grabbing opt-in
