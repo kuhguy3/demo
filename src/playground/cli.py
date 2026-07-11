@@ -3,18 +3,22 @@
 Usage:
     playground scan HOST [--ports 22,80,443] [--timeout 0.5]
     playground discover CIDR [--timeout 1.0]
+    playground subdomains DOMAIN [--wordlist FILE]
     playground headers URL
+    playground fingerprint URL
     playground fuzz URL [--wordlist FILE]
     playground crawl URL [--max-pages 25]
+    playground map URL
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from urllib.parse import urlparse
 
-from playground.recon import host_discovery, port_scanner
-from playground.webtest import crawler, fuzzer, inspector
+from playground.recon import host_discovery, port_scanner, subdomains
+from playground.webtest import crawler, entry_points, fingerprint, fuzzer, inspector
 
 DISCLAIMER = "Only run these tools against systems you own or are explicitly authorized to test."
 
@@ -41,9 +45,39 @@ def _cmd_discover(args: argparse.Namespace) -> None:
         print("  none responded")
 
 
+def _cmd_subdomains(args: argparse.Namespace) -> None:
+    wordlist = None
+    if args.wordlist:
+        with open(args.wordlist) as f:
+            wordlist = [line.strip() for line in f if line.strip()]
+    results = subdomains.enumerate(args.domain, wordlist=wordlist, max_workers=args.workers, delay=args.delay)
+    print(subdomains.format_results(args.domain, results))
+
+
 def _cmd_headers(args: argparse.Namespace) -> None:
     result = inspector.inspect(args.url)
     print(inspector.format_result(result))
+
+
+def _cmd_fingerprint(args: argparse.Namespace) -> None:
+    result = fingerprint.fingerprint(args.url)
+    print(fingerprint.format_result(result))
+
+
+def _cmd_map(args: argparse.Namespace) -> None:
+    forms = entry_points.discover_forms(args.url)
+    print(f"Forms on {args.url}:")
+    print(entry_points.format_forms(forms))
+
+    parsed = urlparse(args.url)
+    site_root = f"{parsed.scheme}://{parsed.netloc}"
+    hidden = entry_points.hidden_content(site_root)
+    print(f"\nHidden content (robots.txt / sitemap.xml) for {site_root}:")
+    if hidden:
+        for path in hidden:
+            print(f"  {path}")
+    else:
+        print("  none found")
 
 
 def _cmd_fuzz(args: argparse.Namespace) -> None:
@@ -83,9 +117,22 @@ def main(argv: list[str] | None = None) -> int:
     discover_p.add_argument("--delay", type=float, default=0.0, help="pacing delay (seconds) between pings")
     discover_p.set_defaults(func=_cmd_discover)
 
+    subdomains_p = subparsers.add_parser("subdomains", help="DNS-based subdomain enumeration")
+    subdomains_p.add_argument("domain")
+    subdomains_p.add_argument("--wordlist", help="path to a newline-delimited wordlist file")
+    subdomains_p.add_argument("--workers", type=int, default=8, help="max concurrent resolutions")
+    subdomains_p.add_argument("--delay", type=float, default=0.0, help="pacing delay (seconds) between lookups")
+    subdomains_p.set_defaults(func=_cmd_subdomains)
+
     headers_p = subparsers.add_parser("headers", help="Inspect a URL's response headers/cookies")
     headers_p.add_argument("url")
     headers_p.set_defaults(func=_cmd_headers)
+
+    fingerprint_p = subparsers.add_parser(
+        "fingerprint", help="Passive tech fingerprinting + missing security headers"
+    )
+    fingerprint_p.add_argument("url")
+    fingerprint_p.set_defaults(func=_cmd_fingerprint)
 
     fuzz_p = subparsers.add_parser("fuzz", help="Wordlist-based path fuzzing")
     fuzz_p.add_argument("url")
@@ -99,6 +146,10 @@ def main(argv: list[str] | None = None) -> int:
     crawl_p.add_argument("--max-pages", type=int, default=25)
     crawl_p.add_argument("--delay", type=float, default=0.2, help="pacing delay (seconds) between page fetches")
     crawl_p.set_defaults(func=_cmd_crawl)
+
+    map_p = subparsers.add_parser("map", help="Discover forms/inputs and hidden content (robots.txt/sitemap.xml)")
+    map_p.add_argument("url")
+    map_p.set_defaults(func=_cmd_map)
 
     args = parser.parse_args(argv)
     args.func(args)

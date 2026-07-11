@@ -7,6 +7,17 @@ PAGES = {
     "/": b'<html><body><a href="/about">About</a><a href="/secret">shh</a></body></html>',
     "/about": b"<html><body>About page</body></html>",
     "/secret": b"top secret",
+    "/login": (
+        b'<html><body><form action="/do-login" method="post">'
+        b'<input name="username"><input name="password" type="password">'
+        b"</form></body></html>"
+    ),
+    "/robots.txt": b"User-agent: *\nDisallow: /admin\nDisallow: /backup\n",
+    "/sitemap.xml": (
+        b'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        b"<url><loc>http://example.com/page1</loc></url>"
+        b"</urlset>"
+    ),
 }
 
 
