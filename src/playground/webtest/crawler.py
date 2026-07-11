@@ -5,15 +5,17 @@ For use only against sites you own or are explicitly authorized to test.
 
 from __future__ import annotations
 
+import time
 from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
 
-def crawl(start_url: str, max_pages: int = 25, timeout: float = 5.0) -> list[str]:
+def crawl(start_url: str, max_pages: int = 25, timeout: float = 5.0, delay: float = 0.2) -> list[str]:
     """Breadth-first crawl of same-domain links starting at `start_url`.
 
+    `delay` paces requests between page fetches for a quieter footprint.
     Returns the list of discovered URLs, in visit order.
     """
     domain = urlparse(start_url).netloc
@@ -26,6 +28,9 @@ def crawl(start_url: str, max_pages: int = 25, timeout: float = 5.0) -> list[str
         if url in visited:
             continue
         visited.add(url)
+
+        if delay and discovered:
+            time.sleep(delay)
 
         try:
             resp = requests.get(url, timeout=timeout)

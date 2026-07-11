@@ -21,12 +21,19 @@ DISCLAIMER = "Only run these tools against systems you own or are explicitly aut
 
 def _cmd_scan(args: argparse.Namespace) -> None:
     ports = [int(p) for p in args.ports.split(",")] if args.ports else None
-    results = port_scanner.scan(args.host, ports=ports, timeout=args.timeout)
+    results = port_scanner.scan(
+        args.host,
+        ports=ports,
+        timeout=args.timeout,
+        max_workers=args.workers,
+        delay=args.delay,
+        grab_banners=args.banners,
+    )
     print(port_scanner.format_results(args.host, results))
 
 
 def _cmd_discover(args: argparse.Namespace) -> None:
-    alive = host_discovery.sweep(args.cidr, timeout=args.timeout)
+    alive = host_discovery.sweep(args.cidr, timeout=args.timeout, max_workers=args.workers, delay=args.delay)
     print(f"Live hosts in {args.cidr}:")
     for host in alive:
         print(f"  {host}")
@@ -44,13 +51,13 @@ def _cmd_fuzz(args: argparse.Namespace) -> None:
     if args.wordlist:
         with open(args.wordlist) as f:
             wordlist = [line.strip() for line in f if line.strip()]
-    results = fuzzer.fuzz(args.url, wordlist=wordlist)
+    results = fuzzer.fuzz(args.url, wordlist=wordlist, max_workers=args.workers, delay=args.delay)
     print(f"Fuzz results for {args.url}:")
     print(fuzzer.format_results(results))
 
 
 def _cmd_crawl(args: argparse.Namespace) -> None:
-    pages = crawler.crawl(args.url, max_pages=args.max_pages)
+    pages = crawler.crawl(args.url, max_pages=args.max_pages, delay=args.delay)
     print(f"Discovered {len(pages)} page(s):")
     for page in pages:
         print(f"  {page}")
@@ -64,11 +71,16 @@ def main(argv: list[str] | None = None) -> int:
     scan_p.add_argument("host")
     scan_p.add_argument("--ports", help="comma-separated port list")
     scan_p.add_argument("--timeout", type=float, default=0.5)
+    scan_p.add_argument("--workers", type=int, default=10, help="max concurrent connection attempts")
+    scan_p.add_argument("--delay", type=float, default=0.0, help="pacing delay (seconds) between probes")
+    scan_p.add_argument("--banners", action="store_true", help="attempt banner grabbing on open ports")
     scan_p.set_defaults(func=_cmd_scan)
 
     discover_p = subparsers.add_parser("discover", help="ICMP ping sweep over a CIDR")
     discover_p.add_argument("cidr")
     discover_p.add_argument("--timeout", type=float, default=1.0)
+    discover_p.add_argument("--workers", type=int, default=8, help="max concurrent pings")
+    discover_p.add_argument("--delay", type=float, default=0.0, help="pacing delay (seconds) between pings")
     discover_p.set_defaults(func=_cmd_discover)
 
     headers_p = subparsers.add_parser("headers", help="Inspect a URL's response headers/cookies")
@@ -78,11 +90,14 @@ def main(argv: list[str] | None = None) -> int:
     fuzz_p = subparsers.add_parser("fuzz", help="Wordlist-based path fuzzing")
     fuzz_p.add_argument("url")
     fuzz_p.add_argument("--wordlist", help="path to a newline-delimited wordlist file")
+    fuzz_p.add_argument("--workers", type=int, default=3, help="max concurrent requests")
+    fuzz_p.add_argument("--delay", type=float, default=0.3, help="pacing delay (seconds) between requests")
     fuzz_p.set_defaults(func=_cmd_fuzz)
 
     crawl_p = subparsers.add_parser("crawl", help="Same-domain link crawler")
     crawl_p.add_argument("url")
     crawl_p.add_argument("--max-pages", type=int, default=25)
+    crawl_p.add_argument("--delay", type=float, default=0.2, help="pacing delay (seconds) between page fetches")
     crawl_p.set_defaults(func=_cmd_crawl)
 
     args = parser.parse_args(argv)
