@@ -40,15 +40,3 @@ pytest
 
 All tests run against local sockets/servers spun up in-process — no
 external network access is required.
-
-## Contributing
-
-Changes go through a pull request (PR) — GitHub's review workflow for
-merging code:
-
-1. Create a branch for your change: `git checkout -b my-change`
-2. Commit your work: `git commit -m "describe the change"`
-3. Push the branch: `git push -u origin my-change`
-4. Open a PR against `main` on GitHub. This shows the diff, runs any CI
-   checks, and lets changes be reviewed/discussed before merging.
-5. Once approved (and CI passes), merge the PR into `main`.
