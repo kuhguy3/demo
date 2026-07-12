@@ -39,8 +39,35 @@ class Scope:
     def is_authorized(self, target: str) -> bool:
         if not self.enforced:
             return True
+        # An IP or CIDR target is authorized only if its whole range is a
+        # subnet of an authorized CIDR entry -- not merely if its network
+        # address falls inside one. Otherwise authorizing 10.0.0.0/28 would
+        # also authorize the far broader 10.0.0.0/8.
+        target_net = _as_network(target)
+        if target_net is not None:
+            for entry in self.entries:
+                entry_net = _as_network(entry)
+                if (
+                    entry_net is not None
+                    and entry_net.version == target_net.version
+                    and target_net.subnet_of(entry_net)
+                ):
+                    return True
+            return False
         host = _extract_host(target)
         return any(_matches(host, entry) for entry in self.entries)
+
+
+def _as_network(value: str):
+    """Return the ip_network for a bare IP or CIDR, or None for a hostname/URL.
+
+    A bare IP parses as a /32 (or /128) so single-host targets flow through the
+    same subnet-containment check as CIDR ranges.
+    """
+    try:
+        return ipaddress.ip_network(value, strict=False)
+    except ValueError:
+        return None
 
 
 def _extract_host(target: str) -> str:

@@ -41,3 +41,24 @@ def test_add_is_idempotent(tmp_path):
     scope.add("example.com")
     scope.add("example.com")
     assert scope.entries == ["example.com"]
+
+
+def test_cidr_target_requires_full_containment(tmp_path):
+    # Authorizing a narrow range must not authorize a broader range that
+    # merely shares the same network address.
+    path = tmp_path / "scope.yaml"
+    Scope(entries=["10.0.0.0/28"]).save(path)
+    scope = Scope.load(path)
+
+    # equal or narrower ranges (fully contained) are allowed
+    assert scope.is_authorized("10.0.0.0/28") is True
+    assert scope.is_authorized("10.0.0.0/29") is True
+    assert scope.is_authorized("10.0.0.5") is True  # single host inside the /28
+
+    # broader ranges sharing the network address are refused
+    assert scope.is_authorized("10.0.0.0/24") is False
+    assert scope.is_authorized("10.0.0.0/16") is False
+    assert scope.is_authorized("10.0.0.0/8") is False
+
+    # a same-size range in a different network is refused
+    assert scope.is_authorized("10.0.1.0/28") is False
