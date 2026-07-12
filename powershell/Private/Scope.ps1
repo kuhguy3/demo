@@ -100,6 +100,29 @@ function Test-IpInCidr {
     return $true
 }
 
+function Test-CidrContainedInCidr {
+    # True only if the ENTIRE target CIDR is contained within the entry CIDR.
+    # CIDR blocks are aligned (nested or disjoint, never partially overlapping),
+    # so target is a subset of entry iff the entry prefix is the same size or
+    # larger (entryPrefix <= targetPrefix) AND the target base falls inside the
+    # entry. The prefix-length check is what stops 10.0.0.0/28 from authorizing
+    # the broader 10.0.0.0/8.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$TargetCidr, [Parameter(Mandatory)][string]$EntryCidr)
+
+    $tParts = $TargetCidr -split '/'
+    $eParts = $EntryCidr -split '/'
+    if ($tParts.Count -ne 2 -or $eParts.Count -ne 2) { return $false }
+    try {
+        $tPrefix = [int]$tParts[1]
+        $ePrefix = [int]$eParts[1]
+    } catch {
+        return $false
+    }
+    if ($ePrefix -gt $tPrefix) { return $false }
+    return Test-IpInCidr -IpAddress $tParts[0] -Cidr $EntryCidr
+}
+
 function Test-ScopeEntryMatch {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$TargetHost, [Parameter(Mandatory)][string]$Entry)
@@ -123,6 +146,18 @@ function Test-ScopeAuthorized {
     param([Parameter(Mandatory)][PSCustomObject]$Scope, [Parameter(Mandatory)][string]$Target)
 
     if (-not $Scope.Enforced) { return $true }
+
+    # A CIDR target (e.g. discover 10.0.0.0/8) must have its WHOLE range fall
+    # inside an authorized CIDR, not merely its network address -- otherwise a
+    # narrow authorization would green-light a far broader sweep.
+    if ($Target -match '^\s*[0-9]{1,3}(\.[0-9]{1,3}){3}\s*/\s*[0-9]{1,2}\s*$') {
+        foreach ($entry in $Scope.Entries) {
+            if ($entry -match '/' -and (Test-CidrContainedInCidr -TargetCidr $Target -EntryCidr $entry)) {
+                return $true
+            }
+        }
+        return $false
+    }
 
     $targetHost = Get-ScopeHost -Target $Target
     foreach ($entry in $Scope.Entries) {

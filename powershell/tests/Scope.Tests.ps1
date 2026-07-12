@@ -48,4 +48,22 @@ Describe 'PlaygroundScope' {
         Add-PlaygroundScopeEntry -Scope $scope -Target 'example.com'
         @($scope.Entries).Count | Should -Be 1
     }
+
+    It 'requires a CIDR target to be fully contained, not just share a network address' {
+        $scope = New-PlaygroundScope
+        Add-PlaygroundScopeEntry -Scope $scope -Target '10.0.0.0/28'
+        $scope.Enforced = $true
+
+        # equal or narrower ranges (and single hosts) inside the /28 are allowed
+        Test-ScopeAuthorized -Scope $scope -Target '10.0.0.0/28' | Should -BeTrue
+        Test-ScopeAuthorized -Scope $scope -Target '10.0.0.0/29' | Should -BeTrue
+        Test-ScopeAuthorized -Scope $scope -Target '10.0.0.5'    | Should -BeTrue
+
+        # broader ranges sharing the network address are refused
+        Test-ScopeAuthorized -Scope $scope -Target '10.0.0.0/24' | Should -BeFalse
+        Test-ScopeAuthorized -Scope $scope -Target '10.0.0.0/8'  | Should -BeFalse
+
+        # a same-size range in a different network is refused
+        Test-ScopeAuthorized -Scope $scope -Target '10.0.1.0/28' | Should -BeFalse
+    }
 }
