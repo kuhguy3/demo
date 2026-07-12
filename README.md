@@ -4,6 +4,11 @@ A personal Python playground for authorized security testing, CTF practice,
 and recon experiments. **Only point these tools at systems you own or have
 explicit permission to test.**
 
+The same toolkit is also ported to PowerShell: a PowerShell 7 module in
+`powershell/`, and a dependency-free single-file Windows PowerShell 5.1
+script aimed at red-team operators in
+[`powershell-standalone/`](powershell-standalone/README.md).
+
 ## Setup
 
 ```bash
