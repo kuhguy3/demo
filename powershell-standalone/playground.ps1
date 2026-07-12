@@ -187,7 +187,11 @@ function Import-WordList {
 function Write-Emit {
     param($Data, [string]$Summary, [bool]$AsJson)
     if ($AsJson) {
-        $Data | ConvertTo-Json -Depth 10
+        # Emit via Write-Host so the JSON reaches the console. Using the bare
+        # pipeline would route it into the calling function's output stream,
+        # where dispatch/pipeline call sites swallow it ($r = ... or | Out-Null).
+        # -InputObject (not the pipeline) so an empty array serializes as [].
+        Write-Host (ConvertTo-Json -InputObject $Data -Depth 10)
     } else {
         Write-Host $Summary
     }
@@ -290,6 +294,27 @@ function Test-IpInCidr {
     }
 }
 
+function Test-CidrContainedInCidr {
+    # True only if the ENTIRE target CIDR is contained within the entry CIDR.
+    # CIDR blocks are aligned, so they are either nested or disjoint (never
+    # partially overlapping); therefore target ⊆ entry iff the entry's prefix
+    # is the same size or larger (entryPrefix <= targetPrefix) AND the target's
+    # base address falls inside the entry. Without the prefix-length check,
+    # authorizing 10.0.0.0/28 would wrongly authorize 10.0.0.0/8.
+    param([string]$TargetCidr, [string]$EntryCidr)
+    try {
+        $tParts = $TargetCidr -split '/'
+        $eParts = $EntryCidr -split '/'
+        if ($tParts.Count -ne 2 -or $eParts.Count -ne 2) { return $false }
+        $tPrefix = [int]$tParts[1]
+        $ePrefix = [int]$eParts[1]
+        if ($ePrefix -gt $tPrefix) { return $false }
+        return Test-IpInCidr -IPAddress $tParts[0] -Cidr $EntryCidr
+    } catch {
+        return $false
+    }
+}
+
 function Test-ScopeEntryMatch {
     param([string]$HostName, [string]$Entry)
     $entryHost = ConvertTo-HostOnly $Entry
@@ -317,6 +342,20 @@ function Test-ScopeEntryMatch {
 function Test-Authorized {
     param($Scope, [string]$TargetStr)
     if (-not $Scope.Enforced) { return $true }
+
+    # A CIDR target (e.g. discover 10.0.0.0/8) must have its WHOLE range fall
+    # inside an authorized CIDR -- not merely its network address. Checking it
+    # via ConvertTo-HostOnly would strip it to a single address and pass, so a
+    # narrow authorization could green-light a far broader sweep.
+    if ($TargetStr -match '^\s*[0-9]{1,3}(\.[0-9]{1,3}){3}\s*/\s*[0-9]{1,2}\s*$') {
+        foreach ($entry in $Scope.Entries) {
+            if ($entry -match '/' -and (Test-CidrContainedInCidr -TargetCidr $TargetStr -EntryCidr $entry)) {
+                return $true
+            }
+        }
+        return $false
+    }
+
     $h = ConvertTo-HostOnly $TargetStr
     foreach ($entry in $Scope.Entries) {
         if (Test-ScopeEntryMatch -HostName $h -Entry $entry) { return $true }
@@ -355,8 +394,11 @@ function Initialize-Engagement {
 }
 
 function Write-Audit {
-    param($Engagement, [string]$Command, $Args)
-    $entry = [PSCustomObject]@{ timestamp = (Get-NowIso); command = $Command; args = $Args }
+    # NB: parameter is $CommandArgs, not $Args -- $Args collides with the
+    # automatic $args variable, which silently prevents binding and records
+    # empty args for every command.
+    param($Engagement, [string]$Command, $CommandArgs)
+    $entry = [PSCustomObject]@{ timestamp = (Get-NowIso); command = $Command; args = $CommandArgs }
     ($entry | ConvertTo-Json -Compress -Depth 10) | Add-Content -Path $Engagement.AuditPath
 }
 
@@ -470,7 +512,10 @@ function Invoke-PortScan {
         $results += Receive-Job -Job $j
         Remove-Job -Job $j
     }
-    return @($results | Sort-Object Port)
+    # Select-Object drops the PSComputerName/RunspaceId/PSShowComputerName
+    # properties that Receive-Job staples onto objects returned from Start-Job,
+    # so they don't leak into --json output or findings.json.
+    return @($results | Select-Object Port, Open, Banner | Sort-Object Port)
 }
 
 function Format-ScanResults {
@@ -640,7 +685,7 @@ function Invoke-SubdomainEnum {
         if ($r) { $found += , $r }
         Remove-Job -Job $j
     }
-    return @($found | Sort-Object HostName)
+    return @($found | Select-Object HostName, IP | Sort-Object HostName)
 }
 
 function Format-SubdomainResults {
@@ -1005,7 +1050,7 @@ function Invoke-Fuzzer {
         $results += Receive-Job -Job $j
         Remove-Job -Job $j
     }
-    return @($results | Sort-Object Path)
+    return @($results | Select-Object Path, Url, StatusCode, Length | Sort-Object Path)
 }
 
 function Format-FuzzResults {
@@ -1078,8 +1123,8 @@ function Invoke-Crawler {
 function Invoke-ScanAction {
     param($Engagement, [string]$TargetHost, $PortList, [double]$TimeoutSec, [int]$MaxWorkers, [double]$DelaySec, [bool]$GrabBanners, [bool]$AsJson)
     Assert-Authorized -Engagement $Engagement -TargetStr $TargetHost
-    Write-Audit -Engagement $Engagement -Command "scan" -Args @{ host = $TargetHost; ports = $PortList; timeout = $TimeoutSec; workers = $MaxWorkers; delay = $DelaySec; banners = $GrabBanners }
-    $results = Invoke-PortScan -TargetHost $TargetHost -PortList $PortList -TimeoutSec $TimeoutSec -MaxWorkers $MaxWorkers -DelaySec $DelaySec -GrabBanners $GrabBanners
+    Write-Audit -Engagement $Engagement -Command "scan" -CommandArgs @{ host = $TargetHost; ports = $PortList; timeout = $TimeoutSec; workers = $MaxWorkers; delay = $DelaySec; banners = $GrabBanners }
+    $results = @(Invoke-PortScan -TargetHost $TargetHost -PortList $PortList -TimeoutSec $TimeoutSec -MaxWorkers $MaxWorkers -DelaySec $DelaySec -GrabBanners $GrabBanners)
     $summary = Format-ScanResults -TargetHost $TargetHost -Results $results
     Add-Finding -Engagement $Engagement -Tool "scan" -TargetStr $TargetHost -Data $results -Summary $summary
     Write-Emit -Data $results -Summary $summary -AsJson $AsJson
@@ -1089,8 +1134,8 @@ function Invoke-ScanAction {
 function Invoke-DiscoverAction {
     param($Engagement, [string]$Cidr, [double]$TimeoutSec, [int]$MaxWorkers, [double]$DelaySec, [bool]$AsJson)
     Assert-Authorized -Engagement $Engagement -TargetStr $Cidr
-    Write-Audit -Engagement $Engagement -Command "discover" -Args @{ cidr = $Cidr; timeout = $TimeoutSec; workers = $MaxWorkers; delay = $DelaySec }
-    $alive = Invoke-HostDiscovery -Cidr $Cidr -TimeoutSec $TimeoutSec -MaxWorkers $MaxWorkers -DelaySec $DelaySec
+    Write-Audit -Engagement $Engagement -Command "discover" -CommandArgs @{ cidr = $Cidr; timeout = $TimeoutSec; workers = $MaxWorkers; delay = $DelaySec }
+    $alive = @(Invoke-HostDiscovery -Cidr $Cidr -TimeoutSec $TimeoutSec -MaxWorkers $MaxWorkers -DelaySec $DelaySec)
     $summary = Format-DiscoverResults -Cidr $Cidr -Alive $alive
     Add-Finding -Engagement $Engagement -Tool "discover" -TargetStr $Cidr -Data $alive -Summary $summary
     Write-Emit -Data $alive -Summary $summary -AsJson $AsJson
@@ -1100,8 +1145,8 @@ function Invoke-DiscoverAction {
 function Invoke-SubdomainsAction {
     param($Engagement, [string]$Domain, $Words, [int]$MaxWorkers, [double]$DelaySec, [bool]$AsJson)
     Assert-Authorized -Engagement $Engagement -TargetStr $Domain
-    Write-Audit -Engagement $Engagement -Command "subdomains" -Args @{ domain = $Domain; workers = $MaxWorkers; delay = $DelaySec }
-    $results = Invoke-SubdomainEnum -Domain $Domain -Words $Words -MaxWorkers $MaxWorkers -DelaySec $DelaySec
+    Write-Audit -Engagement $Engagement -Command "subdomains" -CommandArgs @{ domain = $Domain; workers = $MaxWorkers; delay = $DelaySec }
+    $results = @(Invoke-SubdomainEnum -Domain $Domain -Words $Words -MaxWorkers $MaxWorkers -DelaySec $DelaySec)
     $summary = Format-SubdomainResults -Domain $Domain -Results $results
     Add-Finding -Engagement $Engagement -Tool "subdomains" -TargetStr $Domain -Data $results -Summary $summary
     Write-Emit -Data $results -Summary $summary -AsJson $AsJson
@@ -1111,7 +1156,7 @@ function Invoke-SubdomainsAction {
 function Invoke-HeadersAction {
     param($Engagement, [string]$Url, [bool]$AsJson)
     Assert-Authorized -Engagement $Engagement -TargetStr $Url
-    Write-Audit -Engagement $Engagement -Command "headers" -Args @{ url = $Url }
+    Write-Audit -Engagement $Engagement -Command "headers" -CommandArgs @{ url = $Url }
     $result = Invoke-Inspector -Url $Url
     $summary = Format-InspectResult -Result $result
     Add-Finding -Engagement $Engagement -Tool "headers" -TargetStr $Url -Data $result -Summary $summary
@@ -1122,7 +1167,7 @@ function Invoke-HeadersAction {
 function Invoke-FingerprintAction {
     param($Engagement, [string]$Url, [bool]$AsJson)
     Assert-Authorized -Engagement $Engagement -TargetStr $Url
-    Write-Audit -Engagement $Engagement -Command "fingerprint" -Args @{ url = $Url }
+    Write-Audit -Engagement $Engagement -Command "fingerprint" -CommandArgs @{ url = $Url }
     $result = Invoke-Fingerprint -Url $Url
     $summary = Format-FingerprintResult -Result $result
     Add-Finding -Engagement $Engagement -Tool "fingerprint" -TargetStr $Url -Data $result -Summary $summary
@@ -1133,8 +1178,8 @@ function Invoke-FingerprintAction {
 function Invoke-FuzzAction {
     param($Engagement, [string]$Url, $Words, [int]$MaxWorkers, [double]$DelaySec, [bool]$AsJson)
     Assert-Authorized -Engagement $Engagement -TargetStr $Url
-    Write-Audit -Engagement $Engagement -Command "fuzz" -Args @{ url = $Url; workers = $MaxWorkers; delay = $DelaySec }
-    $results = Invoke-Fuzzer -BaseUrl $Url -Words $Words -MaxWorkers $MaxWorkers -DelaySec $DelaySec
+    Write-Audit -Engagement $Engagement -Command "fuzz" -CommandArgs @{ url = $Url; workers = $MaxWorkers; delay = $DelaySec }
+    $results = @(Invoke-Fuzzer -BaseUrl $Url -Words $Words -MaxWorkers $MaxWorkers -DelaySec $DelaySec)
     $summary = "Fuzz results for $Url`:`n" + (Format-FuzzResults -Results $results)
     Add-Finding -Engagement $Engagement -Tool "fuzz" -TargetStr $Url -Data $results -Summary $summary
     Write-Emit -Data $results -Summary $summary -AsJson $AsJson
@@ -1144,8 +1189,8 @@ function Invoke-FuzzAction {
 function Invoke-CrawlAction {
     param($Engagement, [string]$Url, [int]$MaxPages, [double]$DelaySec, [bool]$AsJson)
     Assert-Authorized -Engagement $Engagement -TargetStr $Url
-    Write-Audit -Engagement $Engagement -Command "crawl" -Args @{ url = $Url; max_pages = $MaxPages; delay = $DelaySec }
-    $pages = Invoke-Crawler -StartUrl $Url -MaxPages $MaxPages -DelaySec $DelaySec
+    Write-Audit -Engagement $Engagement -Command "crawl" -CommandArgs @{ url = $Url; max_pages = $MaxPages; delay = $DelaySec }
+    $pages = @(Invoke-Crawler -StartUrl $Url -MaxPages $MaxPages -DelaySec $DelaySec)
     $lines = @("Discovered $($pages.Count) page(s):")
     foreach ($p in $pages) { $lines += "  $p" }
     $summary = ($lines -join "`n")
@@ -1157,12 +1202,12 @@ function Invoke-CrawlAction {
 function Invoke-MapAction {
     param($Engagement, [string]$Url, [bool]$AsJson)
     Assert-Authorized -Engagement $Engagement -TargetStr $Url
-    Write-Audit -Engagement $Engagement -Command "map" -Args @{ url = $Url }
+    Write-Audit -Engagement $Engagement -Command "map" -CommandArgs @{ url = $Url }
 
-    $forms = Get-Forms -Url $Url
+    $forms = @(Get-Forms -Url $Url)
     $uri = [uri]$Url
     $siteRoot = "$($uri.Scheme)://$($uri.Authority)"
-    $hidden = Get-HiddenContent -BaseUrl $siteRoot
+    $hidden = @(Get-HiddenContent -BaseUrl $siteRoot)
 
     $lines = @("Forms on $Url`:", (Format-Forms -Forms $forms))
     $lines += ""
@@ -1228,7 +1273,7 @@ function Invoke-WebReconPipeline {
 function Show-UrlDrillDown {
     param($Engagement, [string]$Url, [bool]$AsJson)
     while ($true) {
-        $choice = Show-Menu -Title "What next for $Url?" -Options @("fingerprint", "map (forms + hidden content)", "fuzz", "crawl")
+        $choice = Show-Menu -Title "What next for ${Url}?" -Options @("fingerprint", "map (forms + hidden content)", "fuzz", "crawl")
         if ($null -eq $choice) { return }
         switch ($choice) {
             0 { Invoke-FingerprintAction -Engagement $Engagement -Url $Url -AsJson $AsJson | Out-Null }
@@ -1270,7 +1315,7 @@ function Show-SubdomainsDrillDown {
         $choice = Show-Menu -Title "Resolved subdomains" -Options $labels
         if ($null -eq $choice) { return }
         $host_ = $Results[$choice].HostName
-        $action = Show-Menu -Title "What next for $host_?" -Options @("scan ports", "fingerprint https://$host_")
+        $action = Show-Menu -Title "What next for ${host_}?" -Options @("scan ports", "fingerprint https://$host_")
         if ($action -eq 0) {
             Invoke-ScanAction -Engagement $Engagement -TargetHost $host_ -PortList $null -TimeoutSec 0.5 -MaxWorkers 10 -DelaySec 0.0 -GrabBanners $false -AsJson $AsJson | Out-Null
         } elseif ($action -eq 1) {

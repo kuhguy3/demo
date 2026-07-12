@@ -80,32 +80,25 @@ to suppress the post-run drill-down.
 .\playground.ps1                    # interactive menu
 ```
 
-## Known issues (as of this drop)
+## Fixes applied
 
-This script is the operator's verbatim version and has **not** yet had the
-fixes below applied. They were found by running it end-to-end; a couple matter
-for correctness of the safety and evidence trail, so read before relying on it:
+Five defects found while testing this port end-to-end have been fixed
+(verified against a local test server and by direct function tests):
 
-1. **Scope enforcement is too permissive for CIDR targets.** Authorizing a
-   narrow range (e.g. `10.0.0.0/28`) currently also authorizes any *broader*
-   range sharing the same network address — `discover -Target 10.0.0.0/8`
-   passes the scope check. The single-host and URL checks are correct; only
-   range-vs-range containment is wrong. **Treat scope as a reminder, not a
-   guarantee, until this is fixed** — this same bug is present in the Python
-   and PS7 ports too.
-2. **`-Json` prints nothing.** JSON output is emitted to a swallowed pipeline;
-   the data is still written to `findings.json`, but nothing reaches stdout.
-3. **`audit.log` records `"args":[]` for every command.** The `$Args`
-   parameter name collides with PowerShell's automatic `$args`, so command
-   arguments are lost from the audit trail (the command name and timestamp are
-   still recorded).
-4. **Two interactive menu titles render blank** ("What next for ?") because
-   `"$Url?"` / `"$host_?"` interpolate a nonexistent `Url?`/`host_?` variable —
-   cosmetic only.
-5. **`findings.json` stores `data: null` instead of `[]`** for runs with zero
-   results — a fidelity gap for anything parsing findings programmatically.
-
-Ask and these can be fixed in a follow-up commit.
+1. **Scope enforcement for CIDR targets.** A CIDR target now requires its
+   *entire* range to be contained in an authorized entry — authorizing
+   `10.0.0.0/28` no longer green-lights the broader `10.0.0.0/8`. Single-host
+   and subdomain matching are unchanged. (The same fix is applied to the
+   Python and PowerShell 7 ports, which shared this bug.)
+2. **`-Json` output.** JSON now reaches stdout via `Write-Host` instead of
+   being swallowed by the calling function's output stream.
+3. **Audit trail.** The `Write-Audit` parameter was renamed off the reserved
+   `$Args` name, so `audit.log` records the real command arguments again.
+4. **Interactive menu titles** now interpolate the URL/host correctly
+   (`${Url}` rather than `$Url?`).
+5. **`findings.json` fidelity.** Empty-result runs record `data: []` instead
+   of `null`; job-worker metadata (`RunspaceId` etc.) is stripped from
+   `--json`/findings output.
 
 ## Relationship to the other ports
 
