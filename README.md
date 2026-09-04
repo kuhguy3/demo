@@ -144,3 +144,43 @@ pytest
 
 All tests run against local sockets/servers spun up in-process — no
 external network access is required.
+
+## European Football Intelligence
+
+A separate, unrelated module (`football_intel`) living in this
+repo: a premium football-predictions engine covering the UEFA Champions
+League, Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Europa
+League, and Conference League.
+
+Every prediction comes from a deterministic scoring framework — never a
+random guess:
+
+- **Team Strength** — ELO differential, squad market value, home
+  advantage, manager rating, injuries/suspensions, fixture congestion,
+  travel fatigue.
+- **Form** — last-5 results, goals scored/conceded, clean sheets.
+- **Advanced Metrics** — xG/xGA, PPDA, shot conversion, big chances.
+- **Market Intelligence** — opening vs. current odds, implied
+  probabilities, sharp-money/steam detection.
+- **Head-to-Head** — last-5 meetings, home/away H2H record, goal and
+  BTTS trends.
+
+These four independent sub-models (Statistical, Form, Market, xG) are
+blended into match-outcome probabilities (always summing to 100%), goals
+markets (Over/Under, BTTS), a ranked top-3 correct score (via a Poisson
+scoreline model), a 1–10 confidence rating, and positive-EV **value bet**
+detection (edge = model probability − implied bookmaker probability,
+flagged only above a 5% edge). An **AI Consensus Index** (0–100) scores
+how strongly the four sub-models agree, and only fixtures scoring 7/10+
+confidence make the Weekend Top European Picks.
+
+Generate the premium HTML dashboard (dark-mode aware, mobile-first,
+league filters, probability bars, confidence/value badges) from the
+bundled sample fixtures:
+
+```bash
+football-intel report --out football_intelligence.html --json-out football_intelligence.json
+```
+
+Predictions are probability estimates based on available data and should
+not be considered financial or betting advice.

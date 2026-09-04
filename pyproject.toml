@@ -17,6 +17,7 @@ dev = [
 
 [project.scripts]
 playground = "playground.cli:main"
+football-intel = "football_intel.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
