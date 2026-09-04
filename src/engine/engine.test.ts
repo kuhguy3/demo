@@ -16,6 +16,7 @@ import {
   arbitrage,
   parlay,
   MAX_PARLAY_LEGS,
+  hedge,
   roi,
   maxDrawdown,
   simulate,
@@ -219,6 +220,32 @@ describe('parlay', () => {
     const r = parlay(many);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error.code).toBe('TOO_MANY_LEGS');
+  });
+});
+
+describe('hedge', () => {
+  it('$100 @ 3.00 hedged at 2.00 equalizes profit on both sides', () => {
+    const r = unwrap(hedge(100, 3.0, 2.0));
+    // S2 = 100*3/2 = 150
+    expect(near(r.hedgeStake, 150)).toBe(true);
+    expect(near(r.profitIfOriginalWins, r.profitIfHedgeWins)).toBe(true);
+    // total staked = 250; if original wins: 300 - 250 = 50
+    expect(near(r.profitIfOriginalWins, 50)).toBe(true);
+    expect(r.guaranteedProfit).toBe(true);
+  });
+  it('hedging at a worse combined price can lock in a guaranteed loss (still equalized)', () => {
+    const r = unwrap(hedge(100, 1.5, 1.5));
+    // S2 = 100*1.5/1.5 = 100; total = 200; if original wins: 150-200=-50
+    expect(near(r.hedgeStake, 100)).toBe(true);
+    expect(near(r.profitIfOriginalWins, -50)).toBe(true);
+    expect(near(r.profitIfHedgeWins, -50)).toBe(true);
+    expect(r.guaranteedProfit).toBe(false);
+  });
+  it('rejects invalid original stake/odds and hedge odds', () => {
+    expect(hedge(-10, 2, 2).ok).toBe(false);
+    expect(hedge(0, 2, 2).ok).toBe(false);
+    expect(hedge(100, 1, 2).ok).toBe(false);
+    expect(hedge(100, 2, 1).ok).toBe(false);
   });
 });
 

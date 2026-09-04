@@ -51,6 +51,18 @@ export const TOOLS: ToolMeta[] = [
     short: 'Combine multiple legs',
     blurb: 'Combine parlay legs and see how the bookmaker margin compounds across them.',
   },
+  {
+    slug: 'arbitrage',
+    title: 'Arbitrage Calculator',
+    short: 'Guaranteed-profit price gaps',
+    blurb: 'Check whether prices across outcomes leave a risk-free arbitrage, and how to split stakes.',
+  },
+  {
+    slug: 'hedge',
+    title: 'Hedge Calculator',
+    short: 'Lock in a result early',
+    blurb: 'Size a second bet on the other side to equalize your profit regardless of the outcome.',
+  },
 ];
 
 export function toolBySlug(slug: string): ToolMeta | undefined {

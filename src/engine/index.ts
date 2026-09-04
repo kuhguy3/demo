@@ -9,6 +9,7 @@ export * from './edge';
 export * from './kelly';
 export * from './vig';
 export * from './arbitrage';
+export * from './hedge';
 export * from './parlay';
 export * from './roi';
 export * from './simulate';
