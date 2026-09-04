@@ -10,6 +10,7 @@ export * from './kelly';
 export * from './vig';
 export * from './arbitrage';
 export * from './hedge';
+export * from './calibration';
 export * from './parlay';
 export * from './roi';
 export * from './simulate';

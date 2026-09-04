@@ -21,6 +21,8 @@ import {
   maxDrawdown,
   simulate,
   analyze,
+  clv,
+  calibration,
   unwrap,
   approxEqual,
 } from './index';
@@ -291,6 +293,76 @@ describe('roi & drawdown', () => {
     // peak 120 → trough 60 → 50% drawdown, abs 60
     expect(near(r.maxDrawdownPct, 0.5)).toBe(true);
     expect(near(r.maxDrawdownAbs, 60)).toBe(true);
+  });
+});
+
+describe('clv', () => {
+  it('positive when the taken price beats the close', () => {
+    // Took 2.10, closed at 2.00 → got a better (higher) price than the close.
+    expect(unwrap(clv(2.1, 2.0))).toBeCloseTo(0.05, 4);
+  });
+  it('negative when the close drifted better than the price taken', () => {
+    expect(unwrap(clv(1.9, 2.0))).toBeCloseTo(-0.05, 4);
+  });
+  it('zero when taken price equals the close', () => {
+    expect(near(unwrap(clv(2.0, 2.0)), 0)).toBe(true);
+  });
+  it('rejects invalid decimal odds on either side', () => {
+    expect(clv(1, 2).ok).toBe(false);
+    expect(clv(2, 1).ok).toBe(false);
+  });
+});
+
+describe('calibration', () => {
+  it('returns an empty result with n=0 for no data (not an error)', () => {
+    const r = unwrap(calibration([]));
+    expect(r.n).toBe(0);
+    expect(r.buckets).toEqual([]);
+    expect(r.brierScore).toBeUndefined();
+  });
+
+  it('a perfectly calibrated set of bets shows predicted ≈ actual per bucket', () => {
+    // 10 bets estimated at 70%, 7 win, 3 lose → bucket actual rate = 0.7.
+    const bets = [
+      ...Array.from({ length: 7 }, () => ({ estimatedProb: 0.7, won: true })),
+      ...Array.from({ length: 3 }, () => ({ estimatedProb: 0.7, won: false })),
+    ];
+    const r = unwrap(calibration(bets, 0.2));
+    expect(r.n).toBe(10);
+    expect(r.buckets).toHaveLength(1);
+    expect(near(r.buckets[0]!.predictedAvg, 0.7)).toBe(true);
+    expect(near(r.buckets[0]!.actualRate, 0.7)).toBe(true);
+    expect(r.buckets[0]!.n).toBe(10);
+  });
+
+  it('a perfect predictor scores Brier 0; a maximally wrong one scores Brier 1', () => {
+    const perfect = unwrap(calibration([
+      { estimatedProb: 1, won: true },
+      { estimatedProb: 0, won: false },
+    ]));
+    expect(near(perfect.brierScore!, 0)).toBe(true);
+
+    const wrong = unwrap(calibration([
+      { estimatedProb: 1, won: false },
+      { estimatedProb: 0, won: true },
+    ]));
+    expect(near(wrong.brierScore!, 1)).toBe(true);
+  });
+
+  it('splits estimates across multiple buckets correctly', () => {
+    const bets = [
+      { estimatedProb: 0.1, won: false },
+      { estimatedProb: 0.55, won: true },
+      { estimatedProb: 0.9, won: true },
+    ];
+    const r = unwrap(calibration(bets, 0.2));
+    expect(r.buckets.map((b) => b.n)).toEqual([1, 1, 1]);
+  });
+
+  it('rejects an out-of-range bucket size and an invalid probability', () => {
+    expect(calibration([], 0).ok).toBe(false);
+    expect(calibration([], 1.5).ok).toBe(false);
+    expect(calibration([{ estimatedProb: 1.5, won: true }]).ok).toBe(false);
   });
 });
 

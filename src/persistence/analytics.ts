@@ -1,6 +1,6 @@
-// Derived analytics over tracked bets. Uses the engine for ROI/drawdown.
+// Derived analytics over tracked bets. Uses the engine for ROI/drawdown/CLV/calibration.
 import type { Bet, TrackerState } from '@/models/types';
-import { roi, maxDrawdown } from '@/engine';
+import { roi, maxDrawdown, clv, calibration, type CalibrationResult } from '@/engine';
 
 export interface PerformanceSummary {
   n: number;
@@ -14,7 +14,11 @@ export interface PerformanceSummary {
   bankrollSeries: number[];
   maxDrawdownPct: number;
   clvAvg?: number; // average closing-line value, when closing odds present
+  calibration: CalibrationResult;
 }
+
+/** Minimum settled+estimated bets before a calibration read is meaningful. */
+export const MIN_CALIBRATION_BETS = 10;
 
 /** Net profit of a single settled bet. */
 function betProfit(b: Bet): number {
@@ -52,14 +56,21 @@ export function summarize(state: TrackerState): PerformanceSummary {
     }
 
     if (b.closingDecimal && b.closingDecimal > 1) {
-      // CLV as the relative price improvement vs the close (positive = beat the close).
-      clvSum += b.oddsDecimal / b.closingDecimal - 1;
-      clvCount++;
+      const c = clv(b.oddsDecimal, b.closingDecimal);
+      if (c.ok) {
+        clvSum += c.value;
+        clvCount++;
+      }
     }
   }
 
   const r = roi(profit, turnover, meta.startingBankroll);
   const dd = maxDrawdown(bankrollSeries);
+
+  const calibrationInputs = bets
+    .filter((b) => (b.status === 'won' || b.status === 'lost') && b.estimatedProb !== undefined)
+    .map((b) => ({ estimatedProb: b.estimatedProb!, won: b.status === 'won' }));
+  const cal = calibration(calibrationInputs);
 
   return {
     n: bets.length,
@@ -73,6 +84,7 @@ export function summarize(state: TrackerState): PerformanceSummary {
     bankrollSeries,
     maxDrawdownPct: dd.ok ? dd.value.maxDrawdownPct : 0,
     clvAvg: clvCount > 0 ? clvSum / clvCount : undefined,
+    calibration: cal.ok ? cal.value : { buckets: [], n: 0 },
   };
 }
 
