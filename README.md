@@ -55,13 +55,24 @@ simulation link reproduces exactly.
 ## Math notes
 
 - **Implied probability** = 1 / decimal odds (includes the bookmaker margin).
-- **De-vig** uses the proportional method by default — simple but slightly biased toward favorites;
-  the method is a parameter so better methods (Shin / power) can be added later.
+- **De-vig** supports two methods: proportional (default; simple but over-taxes favorites) and
+  **Shin's method** (models the overround as informed/"insider" money, solved numerically via
+  bisection for the insider proportion z; corrects the favorite-longshot bias). Selectable on the
+  vig calculator (`/tools/vig-calculator`).
+- **Arbitrage & hedging**: `/tools/arbitrage` detects and allocates stakes when the best prices across
+  outcomes sum to less than 100%; `/tools/hedge` sizes a second bet on the opposing side to equalize
+  profit against an existing bet.
 - **Edge** is always reported as three labeled quantities (probability-point, relative, EV) — never
   one ambiguous number.
 - **Kelly** = (p·d − 1)/(d − 1); negative Kelly is surfaced as "no bet", and fractional Kelly is
   recommended.
 - **Simulation** is a seedable Monte Carlo so shared runs reproduce exactly.
+
+## SEO / social
+
+Every route gets a statically-generated Open Graph image (`opengraph-image.tsx`, rendered at build
+time via `next/og` — see `src/lib/og.tsx`), plus per-tool canonical URLs, FAQ structured data, and a
+sitemap/robots.txt derived from the shared `TOOLS` list in `src/lib/site.ts`.
 
 See the planning document for the full specification and roadmap (calibration/CLV analytics and a
 manual multi-book value scanner are the planned V2 headline features).

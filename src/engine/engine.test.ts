@@ -95,6 +95,37 @@ describe('probability & de-vig', () => {
     expect(near(r.fairProbs[0]! + r.fairProbs[1]!, 1)).toBe(true);
     expect(r.overround).toBeCloseTo(1.0526, 3);
   });
+
+  it('Shin de-vig on a symmetric market also gives 0.5/0.5 (z=0 case)', () => {
+    // A perfectly symmetric market has no favorite-longshot asymmetry to
+    // correct for, so proportional and Shin should agree here.
+    const r = unwrap(deVig([1.9, 1.9], 'shin'));
+    expect(near(r.fairProbs[0]!, 0.5, 1e-6)).toBe(true);
+    expect(near(r.fairProbs[0]! + r.fairProbs[1]!, 1, 1e-6)).toBe(true);
+    expect(r.shinZ).toBeGreaterThanOrEqual(0);
+  });
+
+  it('Shin de-vig sums to 1 and z is in [0,1) for an asymmetric market', () => {
+    const r = unwrap(deVig([1.5, 2.2], 'shin')); // realistic favorite/longshot with overround (S≈1.12)
+    const sum = r.fairProbs.reduce((a, b) => a + b, 0);
+    expect(near(sum, 1, 1e-6)).toBe(true);
+    expect(r.shinZ).toBeGreaterThanOrEqual(0);
+    expect(r.shinZ).toBeLessThan(1);
+  });
+
+  it('Shin gives the favorite a higher fair probability than proportional (corrects the bias)', () => {
+    // The favorite-longshot bias means longshots are relatively overbet, so a
+    // longshot's raw implied probability overstates its true chance by MORE
+    // than uniform (proportional) scaling assumes. Shin corrects for this:
+    // it assigns the favorite a higher fair probability, and the longshot a
+    // lower one, than proportional de-vig does. (Verified numerically against
+    // a reference implementation before asserting the direction here.)
+    const decimals = [1.4, 2.98]; // realistic favorite/longshot, ~5% overround
+    const prop = unwrap(deVig(decimals, 'proportional'));
+    const shin = unwrap(deVig(decimals, 'shin'));
+    expect(shin.fairProbs[0]!).toBeGreaterThan(prop.fairProbs[0]!);
+    expect(shin.fairProbs[1]!).toBeLessThan(prop.fairProbs[1]!);
+  });
 });
 
 describe('expected value', () => {

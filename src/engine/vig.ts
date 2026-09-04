@@ -1,6 +1,6 @@
 // Overround / margin / hold for a market, plus fair (de-vigged) prices.
 import { Result, ok, err } from './result';
-import { impliedProbability } from './probability';
+import { impliedProbability, deVig, type DeVigMethod } from './probability';
 
 export interface MarginResult {
   /** S = sum of implied probabilities across all outcomes. */
@@ -11,12 +11,20 @@ export interface MarginResult {
   holdPct: number;
   /** Per-outcome implied probabilities (with vig). */
   impliedProbs: number[];
-  /** Per-outcome fair probabilities (proportional de-vig). */
+  /** Per-outcome fair probabilities, computed with the chosen de-vig method. */
   fairProbs: number[];
+  method: DeVigMethod;
+  /** Shin's estimated insider proportion — only set when method is 'shin'. */
+  shinZ?: number;
 }
 
-/** Compute overround, hold, and fair probabilities from a market's decimal odds. */
-export function margin(decimals: number[]): Result<MarginResult> {
+/**
+ * Compute overround, hold, and fair probabilities from a market's decimal odds.
+ * `method` selects how the vig is removed to estimate fair probabilities —
+ * see src/engine/probability.ts for the tradeoffs between 'proportional' and
+ * 'shin'.
+ */
+export function margin(decimals: number[], method: DeVigMethod = 'proportional'): Result<MarginResult> {
   if (decimals.length < 2) {
     return err('EMPTY_INPUT', 'Enter odds for at least two outcomes.', 'odds');
   }
@@ -29,6 +37,17 @@ export function margin(decimals: number[]): Result<MarginResult> {
   const overround = impliedProbs.reduce((a, b) => a + b, 0);
   const overroundPct = overround - 1;
   const holdPct = overround > 0 ? (overround - 1) / overround : 0;
-  const fairProbs = impliedProbs.map((i) => i / overround);
-  return ok({ overround, overroundPct, holdPct, impliedProbs, fairProbs });
+
+  const dv = deVig(decimals, method);
+  if (!dv.ok) return dv;
+
+  return ok({
+    overround,
+    overroundPct,
+    holdPct,
+    impliedProbs,
+    fairProbs: dv.value.fairProbs,
+    method,
+    shinZ: dv.value.shinZ,
+  });
 }
