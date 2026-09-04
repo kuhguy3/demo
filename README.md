@@ -74,11 +74,43 @@ Every route gets a statically-generated Open Graph image (`opengraph-image.tsx`,
 time via `next/og` — see `src/lib/og.tsx`), plus per-tool canonical URLs, FAQ structured data, and a
 sitemap/robots.txt derived from the shared `TOOLS` list in `src/lib/site.ts`.
 
-See the planning document for the full specification and roadmap (calibration/CLV analytics and a
-manual multi-book value scanner are the planned V2 headline features).
+Calibration/CLV analytics landed in the Tracker (`src/engine/calibration.ts`, surfaced via the
+"Calibration & CLV" card on `/tracker`). A manual multi-book value scanner remains a planned V2
+feature.
+
+## Calibration & CLV
+
+`summarize()` (`src/persistence/analytics.ts`) buckets settled bets that carry a probability
+estimate (`Bet.estimatedProb`) and compares each bucket's average estimate to its actual win rate —
+plus a Brier score — via `calibration()` in `src/engine/calibration.ts`. The Tracker's "Calibration &
+CLV" card renders that as a reliability table once at least `MIN_CALIBRATION_BETS` (10) qualifying
+bets exist; below that it shows a prompt to log more. Each bet row also has an inline **closing
+odds** field (`store.updateBet(id, { closingDecimal })`) that feeds the average CLV
+(`clv(takenDecimal, closingDecimal)`) shown alongside it.
 
 ## Deploy
 
 `npm run build` produces a fully static site in `out/`. Host it free on GitHub Pages, Cloudflare
 Pages, or Vercel. Set the real domain in `src/lib/site.ts` (`SITE.url`) for canonical URLs and the
 sitemap.
+
+### GitHub Pages (configured)
+
+`.github/workflows/deploy-pages.yml` builds and publishes `out/` via GitHub Pages on every push to
+`main` or `claude/calibration-closing-odds-etub7t`. Two one-time repo settings had to be set by hand
+(not scriptable via the GitHub API/MCP tools available in this session) and are easy to lose track
+of if the workflow file is ever copied to a new repo:
+
+- **Settings → Pages → Build and deployment → Source: "GitHub Actions"** (not "Deploy from a
+  branch"). Without this the workflow's `deploy` job fails outright.
+- **Settings → Environments → github-pages → Deployment branches and tags**: must explicitly allow
+  every branch the workflow deploys from (`main` is allowed by default when the environment is
+  auto-created; other branches, like the one above, need to be added or the `deploy` job fails fast
+  with no useful log).
+
+This is a **project** Pages site, served under `/<repo>/` (currently `https://kuhguy3.github.io/demo/`),
+not the domain root. `next.config.mjs` reads a `BASE_PATH` env var into `basePath`/`assetPrefix` so
+the export's asset URLs and route links resolve correctly; the workflow sets `BASE_PATH=/demo` at
+build time. Any internal link must use `next/link` (which applies `basePath` automatically) rather
+than a raw `<a href="/...">`, or it will 404 once deployed. Local dev/`test:e2e` leave `BASE_PATH`
+unset, so they still run un-prefixed at the domain root.
