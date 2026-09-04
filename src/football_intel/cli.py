@@ -11,15 +11,28 @@ import json
 import sys
 from dataclasses import asdict
 
+from football_intel.config import CONFIG
 from football_intel.dashboard import render_dashboard
 from football_intel.data.sample_fixtures import FIXTURES
 from football_intel.engine import PredictionEngine
+from football_intel.live_data import with_live_odds
 from football_intel.picks import top_picks
 
 
 def _cmd_report(args: argparse.Namespace) -> None:
+    fixtures = FIXTURES
+    if args.live:
+        if not CONFIG.live_data_available:
+            print(
+                "warning: --live was requested but no provider API keys are set "
+                "(see src/football_intel/providers/README.md) — using sample data",
+                file=sys.stderr,
+            )
+        else:
+            fixtures = with_live_odds(fixtures)
+
     engine = PredictionEngine()
-    predictions = [engine.predict(fx) for fx in FIXTURES]
+    predictions = [engine.predict(fx) for fx in fixtures]
 
     html_out = render_dashboard(predictions)
     with open(args.out, "w") as f:
@@ -56,6 +69,9 @@ def build_parser() -> argparse.ArgumentParser:
     report_p = subparsers.add_parser("report", help="Generate the premium HTML dashboard from sample fixtures")
     report_p.add_argument("--out", default="football_intelligence.html", help="output HTML path")
     report_p.add_argument("--json-out", help="also write a JSON summary to this path")
+    report_p.add_argument(
+        "--live", action="store_true", help="overlay live odds from the-odds-api.com (requires ODDS_API_KEY)"
+    )
     report_p.set_defaults(func=_cmd_report)
 
     return parser

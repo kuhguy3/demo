@@ -182,5 +182,10 @@ bundled sample fixtures:
 football-intel report --out football_intelligence.html --json-out football_intelligence.json
 ```
 
+Pass `--live` to overlay real current odds from the-odds-api.com once
+`ODDS_API_KEY` is set (falls back to sample data with a warning if it
+isn't) — see `src/football_intel/providers/README.md` for that and the
+other pluggable data providers (fixtures/form/H2H, xG).
+
 Predictions are probability estimates based on available data and should
 not be considered financial or betting advice.
