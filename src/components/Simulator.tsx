@@ -1,7 +1,8 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { simulate, type StakingRule, type SimResult } from '@/engine';
+import { type StakingRule, type SimResult } from '@/engine';
 import { useQueryState } from '@/hooks/useQueryState';
+import { useSimWorker } from '@/hooks/useSimWorker';
 import { Card, NumberField, Segmented, Slider, Stat, StatGrid, Disclaimer } from '@/components/ui';
 import { money, pct, num } from '@/lib/format';
 
@@ -60,6 +61,8 @@ export function Simulator() {
 
   const [result, setResult] = useState<SimResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const { run: runInWorker } = useSimWorker();
 
   const cfg = useMemo(() => {
     const staking = state.staking as StakingRule;
@@ -78,8 +81,11 @@ export function Simulator() {
     };
   }, [state]);
 
-  function run() {
-    const r = simulate(cfg);
+  async function run() {
+    setRunning(true);
+    setError(null);
+    const r = await runInWorker(cfg);
+    setRunning(false);
     if (r.ok) {
       setResult(r.value);
       setError(null);
@@ -119,8 +125,14 @@ export function Simulator() {
             onChange={(v) => update({ fraction: v })}
             suffix={state.staking === 'kelly' ? '×' : '%'}
           />
-          <button type="button" onClick={run} className="w-full rounded-lg bg-brand px-4 py-2.5 font-medium text-white hover:bg-brand-strong">
-            Run simulation
+          <button
+            type="button"
+            onClick={run}
+            disabled={running}
+            aria-busy={running}
+            className="w-full rounded-lg bg-brand px-4 py-2.5 font-medium text-white hover:bg-brand-strong disabled:opacity-60"
+          >
+            {running ? 'Running…' : 'Run simulation'}
           </button>
           {error && <p role="alert" className="text-sm text-negative">{error}</p>}
         </div>
@@ -153,7 +165,11 @@ export function Simulator() {
           </>
         ) : (
           <Card>
-            <p className="text-muted">Set your parameters and run the simulation to see the distribution of outcomes.</p>
+            <p className="text-muted" aria-live="polite">
+              {running
+                ? 'Running simulation in the background…'
+                : 'Set your parameters and run the simulation to see the distribution of outcomes.'}
+            </p>
           </Card>
         )}
         <Disclaimer />

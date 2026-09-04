@@ -42,7 +42,15 @@ npm run dev        # http://localhost:3000
 npm test           # run the engine unit tests
 npm run typecheck  # tsc --noEmit
 npm run build      # static export to ./out
+npm run test:e2e   # Playwright: builds, serves ./out, and drives it (desktop + 390px mobile)
 ```
+
+## Simulation architecture
+
+The Monte Carlo simulator (`src/engine/simulate.ts`) runs inside a Web Worker
+(`src/workers/simulate.worker.ts`, driven by `src/hooks/useSimWorker.ts`) so
+large runs never block the UI thread. It's seeded (mulberry32) so a shared
+simulation link reproduces exactly.
 
 ## Math notes
 

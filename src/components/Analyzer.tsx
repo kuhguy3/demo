@@ -184,6 +184,7 @@ export function Analyzer() {
                 <>
                   <div className="text-sm text-muted">Verdict</div>
                   <div
+                    data-testid="verdict"
                     className={`mt-1 text-2xl font-bold ${
                       verdictTone === 'positive'
                         ? 'text-positive'
