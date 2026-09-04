@@ -1,5 +1,6 @@
 'use client';
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { parseOdds, impliedProbability, fairDecimalOdds, type OddsFormat } from '@/engine';
 import { Card, NumberField, Segmented, Stat, StatGrid, ShowMath } from '@/components/ui';
 import { pct, odds as fmtOdds } from '@/lib/format';
@@ -46,9 +47,9 @@ export function ImpliedProbabilityCalc() {
               This is the probability the price implies, <em>including</em> the bookmaker margin — so
               the summed implied probabilities across a market are more than 100%. Strip the margin
               with the{' '}
-              <a href="/tools/vig-calculator" className="text-brand hover:underline">
+              <Link href="/tools/vig-calculator" className="text-brand hover:underline">
                 vig calculator
-              </a>{' '}
+              </Link>{' '}
               to estimate fair probability.
             </p>
           </ShowMath>

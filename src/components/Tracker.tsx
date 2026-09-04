@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import type { Bet, BetStatus, TrackerState } from '@/models/types';
 import * as store from '@/persistence/tracker';
 import { summarize, toCsv, parseCsv, MIN_CALIBRATION_BETS } from '@/persistence/analytics';
@@ -208,7 +209,7 @@ export function Tracker() {
           {bets.length === 0 ? (
             <p className="mt-6 text-muted">
               No bets yet. Add one on the left, or save a bet from the{' '}
-              <a href="/analyze" className="text-brand hover:underline">analyzer</a>.
+              <Link href="/analyze" className="text-brand hover:underline">analyzer</Link>.
             </p>
           ) : (
             <ul className="mt-4 space-y-2">
