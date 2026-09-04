@@ -2,10 +2,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Bet, BetStatus, TrackerState } from '@/models/types';
 import * as store from '@/persistence/tracker';
-import { summarize, toCsv, parseCsv } from '@/persistence/analytics';
+import { summarize, toCsv, parseCsv, MIN_CALIBRATION_BETS } from '@/persistence/analytics';
 import { parseOdds } from '@/engine';
 import { Card, NumberField, Stat, StatGrid, Disclaimer } from '@/components/ui';
-import { money, signedMoney, pct, signedPct, odds as fmtOdds } from '@/lib/format';
+import { money, signedMoney, pct, signedPct, num, odds as fmtOdds } from '@/lib/format';
 
 const STATUSES: BetStatus[] = ['pending', 'won', 'lost', 'void'];
 
@@ -77,6 +77,10 @@ export function Tracker() {
 
   function setStatus(id: string, status: BetStatus) {
     setState({ ...store.updateBet(id, { status }) });
+  }
+
+  function setClosingOdds(id: string, closingDecimal: number | undefined) {
+    setState({ ...store.updateBet(id, { closingDecimal }) });
   }
 
   function remove(id: string) {
@@ -209,19 +213,84 @@ export function Tracker() {
           ) : (
             <ul className="mt-4 space-y-2">
               {bets.map((b) => (
-                <BetRow key={b.id} bet={b} onStatus={setStatus} onDelete={remove} />
+                <BetRow key={b.id} bet={b} onStatus={setStatus} onDelete={remove} onClosingOdds={setClosingOdds} />
               ))}
             </ul>
           )}
         </Card>
       </div>
+
+      <Card>
+        <h2 className="text-lg font-semibold">Calibration &amp; CLV</h2>
+        <p className="mt-1 text-xs text-muted">
+          How well your estimated probabilities matched actual outcomes, and how your prices compared to the closing line.
+        </p>
+        {summary.calibration.n < MIN_CALIBRATION_BETS ? (
+          <p className="mt-4 text-muted">
+            Log at least {MIN_CALIBRATION_BETS} settled bets with a probability estimate to see your calibration
+            (you have {summary.calibration.n} so far).
+          </p>
+        ) : (
+          <div className="mt-4 space-y-4">
+            <StatGrid>
+              <Stat label="Brier score" value={num(summary.calibration.brierScore, 3)} />
+              <Stat label="Avg CLV" value={signedPct(summary.clvAvg)} tone={summary.clvAvg !== undefined && summary.clvAvg > 0 ? 'positive' : summary.clvAvg !== undefined && summary.clvAvg < 0 ? 'negative' : 'neutral'} />
+            </StatGrid>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-xs text-muted">
+                    <th scope="col" className="px-2 py-1.5 font-medium">Predicted range</th>
+                    <th scope="col" className="px-2 py-1.5 font-medium">Predicted avg</th>
+                    <th scope="col" className="px-2 py-1.5 font-medium">Actual win rate</th>
+                    <th scope="col" className="px-2 py-1.5 font-medium">n</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.calibration.buckets.map((b) => (
+                    <tr key={`${b.probLow}-${b.probHigh}`} className="border-t border-border tnum">
+                      <td className="px-2 py-1.5">{pct(b.probLow, 0)}–{pct(b.probHigh, 0)}</td>
+                      <td className="px-2 py-1.5">{pct(b.predictedAvg)}</td>
+                      <td className="px-2 py-1.5">{pct(b.actualRate)}</td>
+                      <td className="px-2 py-1.5">{b.n}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Card>
+
       <Disclaimer />
     </div>
   );
 }
 
-function BetRow({ bet, onStatus, onDelete }: { bet: Bet; onStatus: (id: string, s: BetStatus) => void; onDelete: (id: string) => void }) {
+function BetRow({
+  bet,
+  onStatus,
+  onDelete,
+  onClosingOdds,
+}: {
+  bet: Bet;
+  onStatus: (id: string, s: BetStatus) => void;
+  onDelete: (id: string) => void;
+  onClosingOdds: (id: string, closingDecimal: number | undefined) => void;
+}) {
   const profit = bet.status === 'won' ? bet.stake * (bet.oddsDecimal - 1) : bet.status === 'lost' ? -bet.stake : 0;
+  const [closingStr, setClosingStr] = useState(bet.closingDecimal !== undefined ? String(bet.closingDecimal) : '');
+
+  function commitClosingOdds() {
+    const trimmed = closingStr.trim();
+    if (trimmed === '') {
+      onClosingOdds(bet.id, undefined);
+      return;
+    }
+    const n = Number(trimmed);
+    if (Number.isFinite(n) && n > 1) onClosingOdds(bet.id, n);
+  }
+
   return (
     <li className="rounded-lg border border-border bg-surface-2 p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -254,6 +323,18 @@ function BetRow({ bet, onStatus, onDelete }: { bet: Bet; onStatus: (id: string, 
             ✕
           </button>
         </div>
+      </div>
+      <div className="mt-2 flex items-center gap-1.5">
+        <label className="text-xs text-muted" htmlFor={`closing-${bet.id}`}>Closing odds</label>
+        <input
+          id={`closing-${bet.id}`}
+          value={closingStr}
+          onChange={(e) => setClosingStr(e.target.value)}
+          onBlur={commitClosingOdds}
+          inputMode="decimal"
+          placeholder="e.g. 1.95"
+          className="w-20 rounded-md border border-border bg-surface px-2 py-1 text-sm tnum outline-none focus:border-brand"
+        />
       </div>
     </li>
   );
